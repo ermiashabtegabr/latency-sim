@@ -1,52 +1,33 @@
 use crate::netem::{NetEm, Output};
-use axum::http::StatusCode;
-use axum::response::IntoResponse;
-use axum::routing::{get_service, post};
-use axum::{Json, Router, Server};
-use clap::Parser;
+use axum::http::Uri;
+use axum::routing::{get, post};
+use axum::{http::StatusCode, response::IntoResponse, Json, Router};
 use log::LevelFilter;
 use std::net::SocketAddr;
-use std::path::PathBuf;
-use tower_http::services::ServeDir;
 
 mod netem;
 
-#[derive(Debug, Parser)]
-#[clap(name = "taco")]
-struct Opts {
-    #[clap(short, long, default_value = "88")]
-    port: u16,
-    #[clap(short, long)]
-    web: PathBuf,
-    #[clap(short, long, default_value = "INFO")]
-    log_level: LevelFilter,
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let Opts {
-        port,
-        web,
-        log_level,
-    } = Opts::parse();
+    let port = 3000;
+    let log_level = LevelFilter::Info;
 
     env_logger::builder().filter_level(log_level).try_init()?;
 
-    let router = Router::new()
+    let app = Router::new()
         .route("/api", post(api))
-        .fallback(get_service(ServeDir::new(web)).handle_error(handle_error));
-
+        .fallback(get(fallback));
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    log::info!("Taco server is running on {}...", port);
-    Server::bind(&addr)
-        .serve(router.into_make_service())
-        .await?;
-
+    log::info!("listening on {}", addr);
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
     Ok(())
 }
 
-async fn handle_error(err: std::io::Error) -> impl IntoResponse {
-    (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+async fn fallback(uri: Uri) -> impl IntoResponse {
+    (StatusCode::NOT_FOUND, format!("No route for {}", uri))
 }
 
 async fn api(Json(netem): Json<NetEm>) -> Json<Output> {

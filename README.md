@@ -1,8 +1,5 @@
-# Taco
-
-A simple tc(NetEm) wrapper in Rust
-
-一个 tc 命令的 wrapper
+# latency-sim
+A netem wrapper to simulate latency.
 
 ## References
 
