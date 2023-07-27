@@ -34,6 +34,3 @@ WORKDIR /latency-sim
 
 # Set start command
 CMD ["sudo", "./latency-sim"]
-
-# Expose ports
-EXPOSE 3000

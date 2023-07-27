@@ -1,35 +1,30 @@
-use crate::netem::{NetEm, Output};
-use axum::http::Uri;
-use axum::routing::{get, post};
-use axum::{http::StatusCode, response::IntoResponse, Json, Router};
-use log::LevelFilter;
-use std::net::SocketAddr;
-
-mod netem;
+use latency_sim::{config::NetemConfig, Controls, Delay, Limit, NetEm, Output};
+use tracing::{error, info};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let port = 3000;
-    let log_level = LevelFilter::Info;
+    tracing_subscriber::fmt::init();
 
-    env_logger::builder().filter_level(log_level).try_init()?;
+    let netem_config = NetemConfig::build()?;
+    let limit = netem_config.limit.map(|limit| Limit::new(limit));
+    let delay = Some(Delay {
+        time: netem_config.network_latency,
+        jitter: netem_config.jitter,
+        correlation: netem_config.correlation,
+        distribution: None,
+    });
 
-    let app = Router::new()
-        .route("/api", post(api))
-        .fallback(get(fallback));
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    log::info!("listening on {}", addr);
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+    let controls = Controls { limit, delay };
+    let interface = netem_config.interface.clone();
+    let netem = NetEm {
+        interface,
+        controls,
+    };
+
+    match netem.execute().await {
+        Output::Ok => info!("latency applied"),
+        Output::Error { description } => error!("failed to apply latecy: {}", description),
+    }
+
     Ok(())
-}
-
-async fn fallback(uri: Uri) -> impl IntoResponse {
-    (StatusCode::NOT_FOUND, format!("No route for {}", uri))
-}
-
-async fn api(Json(netem): Json<NetEm>) -> Json<Output> {
-    Json(netem.execute().await)
 }

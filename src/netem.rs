@@ -1,6 +1,3 @@
-use once_cell::sync::Lazy;
-use regex::Regex;
-use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use tokio::process::Command;
 
@@ -32,9 +29,15 @@ trait Control {
 }
 
 // LIMIT := limit packets
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
-struct Limit {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Limit {
     packets: i32,
+}
+
+impl Limit {
+    pub fn new(packets: i32) -> Self {
+        Self { packets }
+    }
 }
 
 impl Control for Limit {
@@ -43,37 +46,11 @@ impl Control for Limit {
     }
 }
 
-static LIMIT_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"limit\s(?P<packets>[-\d]+)").expect("Failed to create regex of limit")
-});
-
-impl FromStr for Limit {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Some(captures) = LIMIT_REGEX.captures(s) {
-            let packets: i32 = captures
-                .name("packets")
-                .ok_or_else(|| anyhow::anyhow!("Failed to get limit packets from '{}'", s))?
-                .as_str()
-                .parse()?;
-
-            Ok(Limit { packets })
-        } else {
-            Err(anyhow::anyhow!("no limit"))
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq)]
-enum Distribution {
-    #[serde(rename = "uniform")]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Distribution {
     Uniform,
-    #[serde(rename = "normal")]
     Normal,
-    #[serde(rename = "pareto")]
     Pareto,
-    #[serde(rename = "paretonormal")]
     ParetoNormal,
 }
 
@@ -89,17 +66,30 @@ impl From<Distribution> for String {
     }
 }
 
+impl FromStr for Distribution {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let dis = match s {
+            "uniform" => Ok(Distribution::Uniform),
+            "normal" => Ok(Distribution::Normal),
+            "pareto" => Ok(Distribution::Pareto),
+            "paretonormal" => Ok(Distribution::ParetoNormal),
+            _ => Err(anyhow::anyhow!("no distribution")),
+        };
+
+        dis
+    }
+}
+
 /// DELAY := delay TIME [ JITTER [ CORRELATION ]]]
 ///        [ distribution { uniform | normal | pareto |  paretonormal } ]
-#[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
-struct Delay {
-    time: Millisecond,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    jitter: Option<Millisecond>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    correlation: Option<Percentage>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    distribution: Option<Distribution>,
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct Delay {
+    pub time: Millisecond,
+    pub jitter: Option<Millisecond>,
+    pub correlation: Option<Percentage>,
+    pub distribution: Option<Distribution>,
 }
 
 impl Control for Delay {
@@ -125,56 +115,10 @@ impl Control for Delay {
     }
 }
 
-static DELAY_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
-        r"delay\s(?P<time>[\d\.]+)ms(\s{2}(?P<jitter>[\d\.]+)ms\s((?P<correlation>[\d\.]+)%)?)?",
-    )
-    .expect("Failed to create regex of delay")
-});
-
-impl FromStr for Delay {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Some(captures) = DELAY_REGEX.captures(s) {
-            let time: Millisecond = captures
-                .name("time")
-                .ok_or_else(|| anyhow::anyhow!("Failed to get delay time from '{}'", s))?
-                .as_str()
-                .parse()?;
-
-            let jitter: Option<Millisecond> = match captures.name("jitter") {
-                Some(s) => s.as_str().parse().ok(),
-                None => None,
-            };
-
-            let correlation: Option<Percentage> = if jitter.is_some() {
-                match captures.name("correlation") {
-                    Some(s) => s.as_str().parse().ok(),
-                    None => None,
-                }
-            } else {
-                None
-            };
-
-            Ok(Delay {
-                time,
-                jitter,
-                correlation,
-                distribution: None,
-            })
-        } else {
-            Err(anyhow::anyhow!("no delay"))
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct Controls {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    limit: Option<Limit>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    delay: Option<Delay>,
+    pub limit: Option<Limit>,
+    pub delay: Option<Delay>,
 }
 
 impl Control for Controls {
@@ -193,31 +137,10 @@ impl Control for Controls {
     }
 }
 
-impl FromStr for Controls {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if !s.starts_with("qdisc netem") {
-            return Ok(Controls::default());
-        }
-
-        let limit = Limit::from_str(s).ok();
-        let delay = Delay::from_str(s).ok();
-
-        Ok(Controls { limit, delay })
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(tag = "type")]
-pub enum NetEm {
-    #[serde(rename = "set")]
-    Set {
-        interface: String,
-        controls: Controls,
-    },
-    #[serde(rename = "reset")]
-    Reset { interface: String },
+#[derive(Clone, Debug)]
+pub struct NetEm {
+    pub interface: String,
+    pub controls: Controls,
 }
 
 impl NetEm {
@@ -257,46 +180,25 @@ impl NetEm {
 
 impl Control for NetEm {
     fn to_args(&self) -> Vec<String> {
-        match self {
-            NetEm::Set {
-                interface,
-                controls,
-            } => {
-                // tc qdisc replace dev <INTERFACE> root netem delay 100ms 10ms loss 1% 30% duplicate 1% reorder 10% 50% corrupt 0.2%
-                let mut args = vec![
-                    "qdisc".into(),
-                    "replace".into(),
-                    "dev".into(),
-                    interface.into(),
-                    "root".into(),
-                    "netem".into(),
-                ];
+        let interface = self.interface.clone();
+        let mut args = vec![
+            "qdisc".into(),
+            "replace".into(),
+            "dev".into(),
+            interface.into(),
+            "root".into(),
+            "netem".into(),
+        ];
 
-                args.append(&mut controls.to_args());
+        args.append(&mut self.controls.to_args());
 
-                args
-            }
-            NetEm::Reset { interface } => {
-                // tc qdisc del dev <INTERFACE> root netem
-                vec![
-                    "qdisc".into(),
-                    "del".into(),
-                    "dev".into(),
-                    interface.into(),
-                    "root".into(),
-                    "netem".into(),
-                ]
-            }
-        }
+        args
     }
 }
 
-#[derive(Serialize)]
-#[serde(tag = "status")]
+#[derive(Clone, Debug)]
 pub enum Output {
-    #[serde(rename = "ok")]
     Ok,
-    #[serde(rename = "error")]
     Error { description: String },
 }
 
