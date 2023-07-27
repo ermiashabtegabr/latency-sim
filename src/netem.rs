@@ -1,5 +1,6 @@
 use std::str::FromStr;
 use tokio::process::Command;
+use tracing::info;
 
 type Percentage = f64;
 type Millisecond = f64;
@@ -146,7 +147,7 @@ pub struct NetEm {
 impl NetEm {
     async fn do_execute(&self) -> anyhow::Result<Output> {
         let args = self.to_args();
-        log::info!("Executing => tc {}", args.join(" "));
+        info!("Executing => tc {}", args.join(" "));
         let output = Command::new("tc")
             .args(args)
             .output()
@@ -157,9 +158,7 @@ impl NetEm {
                 Output::Ok
             } else {
                 let description = match String::from_utf8(output.stderr) {
-                    Ok(stderr) => {
-                        format!("Exit with status code: {}, stderr: {}", code, stderr)
-                    }
+                    Ok(stderr) => format!("Exit with status code: {}, stderr: {}", code, stderr),
                     Err(_) => format!("Exit with status code: {}", code),
                 };
                 Output::err(description)
@@ -189,9 +188,7 @@ impl Control for NetEm {
             "root".into(),
             "netem".into(),
         ];
-
         args.append(&mut self.controls.to_args());
-
         args
     }
 }

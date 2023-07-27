@@ -36,13 +36,14 @@ impl NetemConfig {
             .ok()
             .transpose()?;
 
-        // let distribution = env::var("DISTRIBUTION")
-        //     .map(|dist| {
-        //         dist.parse::<Distribution>()
-        //             .map_err(Error::LatencyConfigParseError)
-        //     })
-        //     .ok()
-        //     .transpose()?;
+        let distribution = env::var("DISTRIBUTION")
+            .map(|dist| {
+                dist.parse::<Distribution>().map_err(|_| {
+                    Error::LatencyConfigParseError("invalid distribution value".to_owned())
+                })
+            })
+            .ok()
+            .transpose()?;
 
         let netem_config = Self {
             limit,
@@ -50,7 +51,7 @@ impl NetemConfig {
             network_latency,
             jitter,
             correlation,
-            distribution: None,
+            distribution,
         };
 
         Ok(netem_config)

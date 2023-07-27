@@ -26,12 +26,6 @@ impl From<ParseIntError> for Error {
     }
 }
 
-// impl From<Distribution> for Error {
-//     fn from(value: Distribution) -> Self {
-//         Self::LatencyConfigParseError(value.to_string())
-//     }
-// }
-
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 pub mod config;

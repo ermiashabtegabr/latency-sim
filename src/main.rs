@@ -4,7 +4,6 @@ use tracing::{error, info};
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
-
     let netem_config = NetemConfig::build()?;
     let limit = netem_config.limit.map(|limit| Limit::new(limit));
     let delay = Some(Delay {
