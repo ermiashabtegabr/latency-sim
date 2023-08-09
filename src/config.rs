@@ -15,16 +15,15 @@ pub struct NetemConfig {
 
 impl NetemConfig {
     pub fn build() -> Result<Self, Error> {
+        let pod_name = env::var("NODE_NAME").map(|node_name| node_name.to_uppercase())?;
+        let network_latency = env::var(pod_name).map(|latency| latency.parse::<f64>())??;
+
         let limit = env::var("LIMIT")
             .map(|limit| limit.parse::<i32>())
             .ok()
             .transpose()?;
 
         let interface = env::var("INTERFACE").map_err(Error::LatencyConfigEnvError)?;
-
-        let network_latency = env::var("NETWORK_LATENCY")
-            .map(|latency| latency.parse::<f64>())
-            .map_err(Error::LatencyConfigEnvError)??;
 
         let jitter = env::var("JITTER")
             .map(|jitter| jitter.parse::<f64>())

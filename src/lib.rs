@@ -26,6 +26,12 @@ impl From<ParseIntError> for Error {
     }
 }
 
+impl From<VarError> for Error {
+    fn from(value: VarError) -> Self {
+        Self::LatencyConfigEnvError(value)
+    }
+}
+
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 pub mod config;
